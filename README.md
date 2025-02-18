@@ -17,7 +17,7 @@ Este projeto implementa o controle de um **Joystick**, um **LED RGB** e um **Dis
 
 1. **Clonar o repositório**:
    ```bash
-   git clone <https://github.com/luizzrosario/tarefa-U4C8.git>
+   git clone https://github.com/luizzrosario/tarefa-U4C8.git
    ```
 
 2. **Compilar o código**:
