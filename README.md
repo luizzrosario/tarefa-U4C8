@@ -77,4 +77,4 @@ Para simular o projeto no **Wokwi**, siga estes passos:
 ---
 
 ## 📺 **Demonstração em Vídeo**
-Confira um vídeo demonstrativo no YouTube: [[Vídeo Tarefa - U4C8]()]
+Confira um vídeo demonstrativo no YouTube: [[Vídeo Tarefa - U4C8](https://youtu.be/sS76mvEhUtw)]

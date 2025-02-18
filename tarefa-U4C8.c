@@ -161,7 +161,7 @@ int main()
 
     while (1)
     {
-        // Desenha a borda no display
+        // Desenha a borda no display caso o botão do joystick seja pressionado
         ssd1306_rect(&ssd, 1, 1, 125, 63, led_green_on, !led_green_on);
 
         // Lê os valores do joystick
