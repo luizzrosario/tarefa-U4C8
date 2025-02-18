@@ -93,7 +93,7 @@ void button_isr(uint gpio, uint32_t events) {
     uint32_t current_time = to_ms_since_boot(get_absolute_time());
 
     // Evita debounce nos botões
-    if (current_time - last_time < 200) return;
+    if (current_time - last_time < 500) return;
     last_time = current_time;
 
     if (gpio == BUTTON_A_PIN) {
@@ -106,7 +106,7 @@ void button_isr(uint gpio, uint32_t events) {
         pwm_set_chan_level(pwm_gpio_to_slice_num(LED_G_PIN), pwm_gpio_to_channel(LED_G_PIN), led_green_on ? 255 : 0);
         printf("Botão do Joystick pressionado! LED Verde: %s\n", led_green_on ? "Aceso" : "Apagado");
         apertos++;  // Incrementa o contador de apertos
-        printf("Número de apertos: %d\n", apertos);
+        printf("Número de apertos do joystick: %d\n", apertos);
     }
 }
 
@@ -153,7 +153,6 @@ int main() {
         // Lê os valores do joystick
         uint16_t x_value = read_joystick_x();
         uint16_t y_value = read_joystick_y();
-        printf("Pino do botão joystick: %d\n", gpio_get(JOYSTICK_BUTTON_PIN));
 
         // Ajusta o brilho dos LEDs com base no valor do joystick
         set_led_brightness(LED_R_PIN, x_value);
