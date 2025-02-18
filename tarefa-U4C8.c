@@ -1,105 +1,134 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "hardware/spi.h"
+#include "hardware/pwm.h"
+#include "hardware/adc.h"
+#include "hardware/gpio.h"
+#include "hardware/irq.h"
 #include "hardware/i2c.h"
-#include "hardware/pio.h"
-#include "hardware/uart.h"
+#include "ssd1306.h"
 
-// SPI Defines
-// We are going to use SPI 0, and allocate it to the following GPIO pins
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define SPI_PORT spi0
-#define PIN_MISO 16
-#define PIN_CS   17
-#define PIN_SCK  18
-#define PIN_MOSI 19
+// Definições de pinos
+#define JOYSTICK_BUTTON_PIN 22
+#define JOYSTICK_X_PIN 27
+#define JOYSTICK_Y_PIN 26
+#define LED_R_PIN 13
+#define LED_G_PIN 11
+#define LED_B_PIN 12
+#define BUTTON_A_PIN 5
+#define I2C_PORT i2c1
+#define I2C_SDA 14
+#define I2C_SCL 15
+#define DISPLAY_ADDR 0x3C
 
-// I2C defines
-// This example will use I2C0 on GPIO8 (SDA) and GPIO9 (SCL) running at 400KHz.
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define I2C_PORT i2c0
-#define I2C_SDA 8
-#define I2C_SCL 9
+#define WIDTH 128
+#define HEIGHT 64
 
-#include "blink.pio.h"
+ssd1306_t ssd;
+volatile bool led_green_on = false;
+volatile bool pwm_enabled = true;
 
-void blink_pin_forever(PIO pio, uint sm, uint offset, uint pin, uint freq) {
-    blink_program_init(pio, sm, offset, pin);
-    pio_sm_set_enabled(pio, sm, true);
-
-    printf("Blinking pin %d at %d Hz\n", pin, freq);
-
-    // PIO counter program takes 3 more cycles in total than we pass as
-    // input (wait for n + 1; mov; jmp)
-    pio->txf[sm] = (125000000 / (2 * freq)) - 3;
+// Funções para ler valores do joystick
+uint16_t read_joystick_x() {
+    adc_select_input(1);
+    return adc_read();
 }
 
-// UART defines
-// By default the stdout UART is `uart0`, so we will use the second one
-#define UART_ID uart1
-#define BAUD_RATE 115200
+uint16_t read_joystick_y() {
+    adc_select_input(0);
+    return adc_read();
+}
 
-// Use pins 4 and 5 for UART1
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define UART_TX_PIN 4
-#define UART_RX_PIN 5
+// Configuração dos LEDs RGB
+void init_rgb_led() {
+    gpio_set_function(LED_R_PIN, GPIO_FUNC_PWM);
+    gpio_set_function(LED_G_PIN, GPIO_FUNC_PWM);
+    gpio_set_function(LED_B_PIN, GPIO_FUNC_PWM);
 
+    pwm_set_wrap(pwm_gpio_to_slice_num(LED_R_PIN), 255);
+    pwm_set_wrap(pwm_gpio_to_slice_num(LED_G_PIN), 255);
+    pwm_set_wrap(pwm_gpio_to_slice_num(LED_B_PIN), 255);
 
+    pwm_set_enabled(pwm_gpio_to_slice_num(LED_R_PIN), true);
+    pwm_set_enabled(pwm_gpio_to_slice_num(LED_G_PIN), true);
+    pwm_set_enabled(pwm_gpio_to_slice_num(LED_B_PIN), true);
+}
 
-int main()
-{
+void set_led_brightness(uint pin, uint16_t value) {
+    uint8_t brightness = (value > 1940 && value < 2200) ? 0 : abs(value - 2048) / 16;
+    if (!pwm_enabled) brightness = 0;
+    pwm_set_chan_level(pwm_gpio_to_slice_num(pin), pwm_gpio_to_channel(pin), brightness);
+}
+
+void move_square(ssd1306_t *ssd, int x, int y) {
+    static int prev_x = WIDTH / 2 - 4;
+    static int prev_y = HEIGHT / 2 - 4;
+
+    ssd1306_rect(ssd, prev_y, prev_x, 8, 8, false, true);
+    prev_x = x;
+    prev_y = y;
+    ssd1306_rect(ssd, prev_y, prev_x, 8, 8, true, true);
+    ssd1306_send_data(ssd);
+}
+
+void button_isr(uint gpio, uint32_t events) {
+    static uint32_t last_time = 0;
+    uint32_t current_time = to_ms_since_boot(get_absolute_time());
+    if (current_time - last_time < 200) return;  // Evita debounce
+    last_time = current_time;
+
+    if (gpio == BUTTON_A_PIN) {
+        pwm_enabled = !pwm_enabled;
+        printf("PWM %s\n", pwm_enabled ? "Ligado" : "Desligado");
+    } else if (gpio == JOYSTICK_BUTTON_PIN) {  // Corrigido para tratar o botão do joystick
+        led_green_on = !led_green_on;
+        pwm_set_chan_level(pwm_gpio_to_slice_num(11), pwm_gpio_to_channel(11), led_green_on ? 255 : 0);
+        printf("Botão do Joystick pressionado! LED Verde: %s\n", led_green_on ? "Aceso" : "Apagado");
+    }
+}
+
+void init_buttons() {
+    gpio_init(BUTTON_A_PIN);
+    gpio_set_dir(BUTTON_A_PIN, GPIO_IN);
+    gpio_pull_up(BUTTON_A_PIN);
+    gpio_set_irq_enabled_with_callback(BUTTON_A_PIN, GPIO_IRQ_EDGE_RISE, true, button_isr);
+
+    gpio_init(JOYSTICK_BUTTON_PIN);
+    gpio_set_dir(JOYSTICK_BUTTON_PIN, GPIO_IN);
+    gpio_pull_up(JOYSTICK_BUTTON_PIN);
+    gpio_set_irq_enabled_with_callback(JOYSTICK_BUTTON_PIN, GPIO_IRQ_EDGE_RISE, true, button_isr);
+}
+
+int main() {
     stdio_init_all();
+    init_rgb_led();
+    init_buttons();
 
-    // SPI initialisation. This example will use SPI at 1MHz.
-    spi_init(SPI_PORT, 1000*1000);
-    gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
-    gpio_set_function(PIN_CS,   GPIO_FUNC_SIO);
-    gpio_set_function(PIN_SCK,  GPIO_FUNC_SPI);
-    gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
-    
-    // Chip select is active-low, so we'll initialise it to a driven-high state
-    gpio_set_dir(PIN_CS, GPIO_OUT);
-    gpio_put(PIN_CS, 1);
-    // For more examples of SPI use see https://github.com/raspberrypi/pico-examples/tree/master/spi
+    adc_init();
+    adc_gpio_init(JOYSTICK_X_PIN);
+    adc_gpio_init(JOYSTICK_Y_PIN);
 
-    // I2C Initialisation. Using it at 400Khz.
-    i2c_init(I2C_PORT, 400*1000);
-    
+    i2c_init(I2C_PORT, 400 * 1000);
     gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
     gpio_pull_up(I2C_SDA);
     gpio_pull_up(I2C_SCL);
-    // For more examples of I2C use see https://github.com/raspberrypi/pico-examples/tree/master/i2c
 
-    // PIO Blinking example
-    PIO pio = pio0;
-    uint offset = pio_add_program(pio, &blink_program);
-    printf("Loaded program at %d\n", offset);
-    
-    #ifdef PICO_DEFAULT_LED_PIN
-    blink_pin_forever(pio, 0, offset, PICO_DEFAULT_LED_PIN, 3);
-    #else
-    blink_pin_forever(pio, 0, offset, 6, 3);
-    #endif
-    // For more pio examples see https://github.com/raspberrypi/pico-examples/tree/master/pio
+    ssd1306_init(&ssd, WIDTH, HEIGHT, false, DISPLAY_ADDR, I2C_PORT);
+    ssd1306_config(&ssd);
+    ssd1306_send_data(&ssd);
 
-    // Set up our UART
-    uart_init(UART_ID, BAUD_RATE);
-    // Set the TX and RX pins by using the function select on the GPIO
-    // Set datasheet for more information on function select
-    gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
-    gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
-    
-    // Use some the various UART functions to send out data
-    // In a default system, printf will also output via the default UART
-    
-    // Send out a string, with CR/LF conversions
-    uart_puts(UART_ID, " Hello, UART!\n");
-    
-    // For more examples of UART use see https://github.com/raspberrypi/pico-examples/tree/master/uart
+    while (1) {
+        uint16_t x_value = read_joystick_x();
+        uint16_t y_value = read_joystick_y();
+        printf("Pino do botão joystick: %d\n", gpio_get(JOYSTICK_BUTTON_PIN));
 
-    while (true) {
-        printf("Hello, world!\n");
-        sleep_ms(1000);
+        set_led_brightness(LED_R_PIN, x_value);
+        set_led_brightness(LED_B_PIN, y_value);
+
+        int square_x = (x_value * (WIDTH - 8)) / 4095;
+        int square_y = HEIGHT - 8 - (y_value * (HEIGHT - 8)) / 4095;
+        move_square(&ssd, square_x, square_y);
+
+        sleep_ms(10);
     }
 }

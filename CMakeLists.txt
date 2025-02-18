@@ -1,5 +1,3 @@
-# Generated Cmake Pico project file
-
 cmake_minimum_required(VERSION 3.13)
 
 set(CMAKE_C_STANDARD 11)
@@ -33,36 +31,36 @@ project(tarefa-U4C8 C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-# Add executable. Default name is the project name, version 0.1
-
-add_executable(tarefa-U4C8 tarefa-U4C8.c )
+# Adiciona o executável principal
+add_executable(tarefa-U4C8 
+    tarefa-U4C8.c          # Arquivo principal fora das pastas
+    src/ssd1306.c 
+)
 
 pico_set_program_name(tarefa-U4C8 "tarefa-U4C8")
 pico_set_program_version(tarefa-U4C8 "0.1")
 
 # Generate PIO header
-pico_generate_pio_header(tarefa-U4C8 ${CMAKE_CURRENT_LIST_DIR}/blink.pio)
+pico_generate_pio_header(tarefa-U4C8 ${CMAKE_CURRENT_LIST_DIR}/utils/ws2812.pio)
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(tarefa-U4C8 1)
 pico_enable_stdio_usb(tarefa-U4C8 1)
 
-# Add the standard library to the build
+# Adiciona as bibliotecas padrão do Pico
 target_link_libraries(tarefa-U4C8
-        pico_stdlib)
-
-# Add the standard include files to the build
-target_include_directories(tarefa-U4C8 PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}
-)
-
-# Add any user requested libraries
-target_link_libraries(tarefa-U4C8 
+        pico_stdlib
         hardware_spi
         hardware_i2c
         hardware_pio
-        
-        )
+        hardware_pwm
+        hardware_adc
+)
 
-pico_add_extra_outputs(tarefa-U4C8)
+# Inclui diretórios necessários
+target_include_directories(tarefa-U4C8 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include  # Inclui a pasta include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src      # Inclui a pasta src (opcional)
+)
 
+pico_add_extra_outputs(tarefa-U4C8)  
